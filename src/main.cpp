@@ -5,7 +5,8 @@
  * Arbeidskrav 1
  * 
  *  Author: Erik Alvarez
- *  Description: Mottaker for sensordata (simulerer en gateway) 
+ *  Description: Transmitter of potato sensordata using
+ *    Long Range 866Mhz Band Lora TTGO 
  *  Based on:
 
   LoRa Duplex communication
@@ -26,46 +27,56 @@ byte localAddress = 0xEA; // address of this device
 byte destination = 0xFF;  // destination to send to
 long lastSendTime = 0;    // last send time
 int interval = 5000;      // interval between sends
-boolean connected = false; //Connected state
-// WiFi network name and password:
-const char *networkName = "Tyldum.NET";
-const char *networkPswd = "kartoffel";
+
+#define DEBUGS
+
+#define LED 2
 
 void setup()
 {
-  Serial.begin(9600); // initialize serial
-  while (!Serial)
+  Serial.begin(9600); // initialize serial and wait for someone to read
+#ifdef DEBUGS
+  while (!Serial) //wait for debugger to attach so we can read the output
     ;
+#endif
 
-  Serial.println("Lora Duplex connect WiFi");
-
+  init_lora();
+  pinMode(LED, OUTPUT);
+}
+void init_lora()
+{
   SPI.begin(SCK, MISO, MOSI, SS);
   LoRa.setPins(SS, RST, DI0);
 
   if (!LoRa.begin(FREQ))
-  { // initialize ratio at 866 Mhz
+  { // initialize radio at 866 Mhz
     Serial.println("LoRa init failed. Check your connections.");
     while (true)
       ; // if failed, do nothing
   }
 
   Serial.println("LoRa init succeeded.");
-  Serial.println("My address: 0x");
+  Serial.print("My address: 0x");
   Serial.println(localAddress, HEX);
-
-  delay(500);
-  connectToWiFi(networkName, networkPswd);
 }
-
 void loop()
 {
+
+  // Make sure we don't spam the GW with signals
+  // using a specified interval to keep the messages
+  // apart, we'll use the last measured values as
+  // payload.
   if (millis() - lastSendTime > interval)
   {
-    String message = "1337"; // send a message
+    String message = "20/12";
+    digitalWrite(LED, HIGH);
+    Serial.println("Sending sensordata: " + message);
     sendMessage(message);
-    Serial.println("Broadcasting: GW " + message);
     lastSendTime = millis();        // timestamp the message
     interval = random(2000) + 6000; // 2-3 seconds
+
+    delay(500);
+    digitalWrite(LED, LOW);
   }
 
   // parse for a packet, and call onReceive with the result:
@@ -127,44 +138,5 @@ void onReceive(int packetSize)
     Serial.print("RSSI: " + String(LoRa.packetRssi()));
     Serial.println(" - This message is not for me.");
     return; // skip rest of function
-  }
-}
-
-void connectToWiFi(const char *ssid, const char *pwd)
-{
-  Serial.println("Connecting to WiFi network: " + String(ssid));
-
-  // delete old config
-  WiFi.disconnect(true);
-  //register event handler
-  WiFi.onEvent(WiFiEvent);
-
-  //Initiate connection
-  WiFi.begin(ssid, pwd);
-
-  Serial.println("Waiting for WIFI connection...");
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-
-}
-
-//wifi event handler
-void WiFiEvent(WiFiEvent_t event)
-{
-  switch (event)
-  {
-  case SYSTEM_EVENT_STA_GOT_IP:
-    //When connected set
-    Serial.print("WiFi connected! IP address: ");
-    Serial.println(WiFi.localIP());
-
-    break;
-  case SYSTEM_EVENT_STA_DISCONNECTED:
-    Serial.println("WiFi lost connection");
-    //connected = false;
-    break;
   }
 }
