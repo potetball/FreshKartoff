@@ -1,4 +1,5 @@
 #include <main.h>
+#include <SimpleDHT.h>
 #include <pinconfig.h>
 
 /*
@@ -28,21 +29,34 @@ byte destination = 0xFF;  // destination to send to
 long lastSendTime = 0;    // last send time
 int interval = 5000;      // interval between sends
 
-#define DEBUGS
+//Temperature
+int vout = 0; //temporary variable to hold sensor reading
+float analogTemperature = 0.0;
+byte digitalTemperature = 0;
+byte digitalHumidity = 0;
 
+#define DEBUGS
 #define LED 2
+#define DHT_PIN 4
+#define TEMP_PIN 37
+
+// Define sensor using SimpleDHT library
+SimpleDHT11 dht11(DHT_PIN);
+
 
 void setup()
 {
   Serial.begin(9600); // initialize serial and wait for someone to read
-#ifdef DEBUGS
-  while (!Serial) //wait for debugger to attach so we can read the output
-    ;
-#endif
+  #ifdef DEBUGS
+    while (!Serial) //wait for debugger to attach so we can read the output
+      ;
+  #endif
 
-  init_lora();
+  pinMode(TEMP_PIN, INPUT);
   pinMode(LED, OUTPUT);
+  init_lora();
 }
+
 void init_lora()
 {
   SPI.begin(SCK, MISO, MOSI, SS);
@@ -59,8 +73,46 @@ void init_lora()
   Serial.print("My address: 0x");
   Serial.println(localAddress, HEX);
 }
+
+void read_environment()
+{
+  int err = SimpleDHTErrSuccess;
+  if ((err = dht11.read(&digitalTemperature, &digitalHumidity, NULL)) != SimpleDHTErrSuccess)
+  {
+    Serial.print("*** error reading DHT11 sensorvalues, errorcode=");
+    Serial.println(err);
+    delay(1000);
+    return;
+  }
+}
+
+void read_temperature()
+{
+  //Read temperature
+  vout = analogRead(TEMP_PIN); //Reading the value from sensor
+  analogTemperature = (vout * 1024.0) / (4.9 * 1000);
+}
+
+void print_variables()
+{
+  // debug output
+  Serial.print("temperature: ");
+  Serial.print((int)digitalTemperature);
+  Serial.print("\t");
+  Serial.print("humidity: ");
+  Serial.print((int)digitalHumidity);
+  Serial.print("\t");
+  Serial.print("analog temp: ");
+  Serial.print(analogTemperature);
+  Serial.println();
+}
 void loop()
 {
+  read_temperature();
+  read_environment();
+  print_variables();
+
+  delay(1500);
 
   // Make sure we don't spam the GW with signals
   // using a specified interval to keep the messages
@@ -68,13 +120,13 @@ void loop()
   // payload.
   if (millis() - lastSendTime > interval)
   {
+
     String message = "20/12";
     digitalWrite(LED, HIGH);
     Serial.println("Sending sensordata: " + message);
     sendMessage(message);
     lastSendTime = millis();        // timestamp the message
     interval = random(2000) + 6000; // 2-3 seconds
-
     delay(500);
     digitalWrite(LED, LOW);
   }
